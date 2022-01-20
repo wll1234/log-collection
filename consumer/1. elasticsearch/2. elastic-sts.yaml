@@ -1,0 +1,141 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: NAMESPACE
+  name: elasticsearch-config
+  labels:
+    app: elasticsearch
+data:
+  elasticsearch.yml: |-
+    cluster.name: ${CLUSTER_NAME}
+    node.name: ${NODE_NAME}
+    discovery.seed_hosts: ${NODE_LIST}
+    cluster.initial_master_nodes: ${MASTER_NODES}
+    
+    network.host: 0.0.0.0
+    
+    xpack.security.enabled: true
+    xpack.security.transport.ssl.enabled: true
+    xpack.security.transport.ssl.verification_mode: certificate
+    xpack.security.transport.ssl.keystore.path: elastic-certificates.p12
+    xpack.security.transport.ssl.truststore.path: elastic-certificates.p12
+    xpack.security.http.ssl.enabled: true
+    xpack.security.http.ssl.verification_mode: certificate
+    xpack.security.http.ssl.keystore.path: elastic-certificates.p12     
+    xpack.security.http.ssl.truststore.path: elastic-certificates.p12
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: es-cluster
+  namespace: NAMESPACE
+spec:
+  serviceName: elasticsearch # service name for elasticsearch
+  replicas: 3
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:7.12.0
+          resources:
+            limits:
+              cpu: 1000m
+            requests:
+              cpu: 100m
+          ports:
+            - containerPort: 9200
+              name: rest
+              protocol: TCP
+            - containerPort: 9300
+              name: inter-node
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+            - name: config
+              mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+              subPath: elasticsearch.yml
+              readOnly: true
+            - name: secret
+              mountPath: /usr/share/elasticsearch/config/elastic-certificates.p12
+              subPath: elastic-certificates.p12
+              readOnly: true
+          env:
+            - name: CLUSTER_NAME
+              value: k8s-elastic
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_LIST
+              value: "es-cluster-0.elasticsearch,es-cluster-1.elasticsearch,es-cluster-2.elasticsearch" # hostname for each container
+            - name: MASTER_NODES
+              value: "es-cluster-0,es-cluster-1,es-cluster-2" # node name in es-cluster
+            - name: ES_JAVA_OPTS
+              value: "-Xms512m -Xmx512m"
+            - name: ELASTIC_USERNAME
+              value: "nuri"
+            - name: ELASTIC_PASSWORD
+              value: "aimiramm12!@"
+      volumes:
+        - name: secret
+          secret:
+            secretName: elastic-certificates
+        - name: config
+          configMap:
+            name: elasticsearch-config
+      initContainers:
+        - name: fix-permissions
+          image: busybox
+          command: ["sh", "-c", "chown -R 1000:1000 /usr/share/elasticsearch/data"]
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+        - name: increase-vm-max-map
+          image: busybox
+          command: ["sysctl", "-w", "vm.max_map_count=262144"]
+          securityContext:
+            privileged: true
+        - name: increase-fd-ulimit
+          image: busybox
+          command: ["sh", "-c", "ulimit -n 65536"]
+          securityContext:
+            privileged: true
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: elasticsearch
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: rook-ceph-block # your storageclass
+        resources:
+          requests:
+            storage: 20Gi
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: elasticsearch
+  namespace: NAMESPACE
+  labels:
+    app: elasticsearch
+spec:
+  selector:
+    app: elasticsearch
+  ports:
+    - port: 9200
+      targetPort: 9200
+      name: rest
+    - port: 9300
+      targetPort: 9300
+      name: inter-node

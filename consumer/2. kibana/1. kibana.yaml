@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kibana-config
+  namespace: NAMESPACE
+data:
+  kibana.yml: |
+    server.host: 0.0.0.0
+    elasticsearch:
+      hosts: ${ELASTICSEARCH_HOSTS}
+      username: ${ELASTICSEARCH_USERNAME}
+      password: ${ELASTICSEARCH_PASSWORD}
+      ssl:
+        certificateAuthorities: ${ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES}
+        verificationMode: certificate
+    xpack.monitoring.ui.container.elasticsearch.enabled: true
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: NAMESPACE
+  labels:
+    app: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+        - name: kibana
+          image: docker.elastic.co/kibana/kibana:7.10.2
+          env:
+            - name: SERVER_NAME
+              value: kibana
+            - name: ELASTICSEARCH_HOSTS
+              value: https://elasticsearch:9200
+            - name: ELASTICSEARCH_USERNAME
+              value: "kibana"
+            - name: ELASTICSEARCH_PASSWORD
+              value: "PASSWORD"
+            - name: SERVER_MAXPAYLOADBYTES
+              value: "8388608"
+            - name: ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES
+              value: "/usr/share/kibana/config/elastic-certificate.pem"
+            - name: ELASTICSEARCH_SSL_VERIFICATIONMODE
+              value: "certificate"
+            - name: XPACK_SECURITY_ENABLED
+              value: "true"
+            - name: SERVER_BASEPATH
+              value: "/your-path"
+            - name: SERVER_REWRITEBASEPATH
+              value: "true"
+            - name: SERVER_PUBLICBASEPATH
+              value: "https://your-host/your-path"
+          ports:
+            - containerPort: 5601
+          volumeMounts:
+            - name: secret
+              mountPath: /usr/share/kibana/config/elastic-certificate.pem
+              subPath: elastic-certificate.pem
+              readOnly: true
+            - name: config
+              mountPath: /usr/share/kibana/config/kibana.yml
+              subPath: kibana.yml
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: kibana-config
+        - name: secret
+          secret:
+            secretName: elastic-certificate-pem
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: kibana
+  name: kibana-svc
+  namespace: NAMESPACE
+spec:
+  ports:
+    - port: 5601
+      name: web
+  selector:
+    app: kibana

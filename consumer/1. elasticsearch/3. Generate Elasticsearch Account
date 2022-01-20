@@ -1,0 +1,22 @@
+kubectl exec -it $(kubectl get pods -n NAMESPACE | grep es | sed -n 1p | awk '{print $1}') -n NAMESPACE -- bin/elasticsearch-setup-passwords auto -b
+##################################
+Changed password for user apm_system
+PASSWORD apm_system = ~~~~~~~~~~~~~~
+
+Changed password for user kibana_system
+PASSWORD kibana_system = ~~~~~~~~~~~~~~
+
+Changed password for user kibana
+PASSWORD kibana = ~~~~~~~~~~~~~~
+
+Changed password for user logstash_system
+PASSWORD logstash_system = ~~~~~~~~~~~~~~
+
+Changed password for user beats_system
+PASSWORD beats_system = ~~~~~~~~~~~~~~
+
+Changed password for user remote_monitoring_user
+PASSWORD remote_monitoring_user = ~~~~~~~~~~~~~~
+
+Changed password for user elastic
+PASSWORD elastic = ~~~~~~~~~~~~~~
